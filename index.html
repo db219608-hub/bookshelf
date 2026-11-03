@@ -42,6 +42,7 @@ h1{color:#f6dfaa;font-size:36px;text-shadow:0 2px 0 rgba(0,0,0,.4)}
 box-shadow:0 0 0 6px #5a3820,0 0 0 7px #8c5c36,0 16px 30px rgba(0,0,0,.45)}
 button,select,input[type=text],input[type=month]{font-family:inherit;background:#3b2819;color:var(--ink);border-color:#7a5230}
 button.pri,.tabs button.on{background:linear-gradient(#e8c47a,#c79c4e);color:#2a1a0e;border-color:#e8c47a}
+input[type=checkbox]{width:20px;height:20px;accent-color:#e0b96d;vertical-align:middle;margin:0 4px 0 0}
 canvas{border-radius:4px;box-shadow:0 0 0 2px #3a2415,0 6px 14px rgba(0,0,0,.4)}
 </style>
 </head>
@@ -68,7 +69,7 @@ canvas{border-radius:4px;box-shadow:0 0 0 2px #3a2415,0 6px 14px rgba(0,0,0,.4)}
 </div>
 
 <section id="month" class="card">
-  <div class="row"><label for="mon">Month</label><input type="month" id="mon"><button id="saveM" class="pri">Save picture</button></div>
+  <div class="row"><label for="mon">Month</label><input type="month" id="mon"><label><input type="checkbox" id="rate" checked> Show my ratings</label><button id="saveM" class="pri">Save picture</button></div>
   <canvas id="cm" width="1440" height="600"></canvas>
   <p class="note" id="mcount"></p>
 </section>
@@ -114,7 +115,7 @@ function load(text){
     return {title:g('Title').replace(/\s*\(.*\)$/,''),author:g('Author'),pages:parseInt(g('Number of Pages'))||300,isbn:isbn,
       read:g('Date Read').replace(/\//g,'-').slice(0,7),
       shelves:(g('Bookshelves')+','+g('Exclusive Shelf')).toLowerCase().split(',').map(function(s){return s.trim()}),
-      owned:parseInt(g('Owned Copies'))>0};
+      owned:parseInt(g('Owned Copies'))>0,rating:parseInt(g('My Rating'))||0};
   });
   try{localStorage.setItem('gr-csv',text)}catch(e){}
   $('status').textContent=books.length+' books loaded.';
@@ -147,11 +148,11 @@ function avg(img){
 }
 function schedule(){clearTimeout(timer);timer=setTimeout(render,400)}
 
-function spine(b,i,mode){
+function spine(b,i,mode,stars){
   var hv=hash(b.title+b.author),p=Math.min(b.pages,900),cv=cover(b);
   var face=cv&&(mode=='all'||(mode=='mixed'&&i%5==0));
   if(face)return {w:74,h:111,face:cv.img,c:cv.color||'#444',b:b};
-  return {w:Math.round(18+p/900*22),h:Math.round(120+p/900*50+(hv%14)),c:(cv&&cv.color)||PAL[hv%PAL.length],b:b};
+  return {w:Math.round(18+p/900*22),h:Math.round((stars?150:120)+p/900*(stars?45:50)+(hv%14)),c:(cv&&cv.color)||PAL[hv%PAL.length],b:b};
 }
 function hue(c){
   var r=parseInt(c.substr(1,2),16)/255,g=parseInt(c.substr(3,2),16)/255,bl=parseInt(c.substr(5,2),16)/255;
@@ -166,8 +167,13 @@ function fit(ctx,s,max){
   if(ctx.measureText(s).width<=max)return s;
   while(s.length>2&&ctx.measureText(s+'…').width>max)s=s.slice(0,-1);return s+'…';
 }
-function draw(cv,list,title,mode,brk){
-  var W=560,pad=28,rowH=200,tbrH=40,tbr=-1,sp=list.map(function(b,i){return spine(b,i,mode)}),rows=[[]],x=pad;
+function star(ctx,cx,cy,r){
+  ctx.beginPath();
+  for(var i=0;i<10;i++){var a=-Math.PI/2+i*Math.PI/5,rr=i%2?r*.45:r;ctx.lineTo(cx+Math.cos(a)*rr,cy+Math.sin(a)*rr)}
+  ctx.closePath();ctx.fillStyle='#f7c948';ctx.fill();ctx.lineWidth=.8;ctx.strokeStyle='rgba(0,0,0,.55)';ctx.stroke();
+}
+function draw(cv,list,title,mode,brk,stars){
+  var W=560,pad=28,rowH=stars?226:200,tbrH=40,tbr=-1,sp=list.map(function(b,i){return spine(b,i,mode,stars)}),rows=[[]],x=pad;
   sp.forEach(function(s,i){
     if((i===brk||x+s.w>W-pad)&&rows[rows.length-1].length){rows.push([]);x=pad}
     if(i===brk)tbr=rows.length-1;
@@ -194,16 +200,23 @@ function draw(cv,list,title,mode,brk){
       if(s.face){
         ctx.fillStyle='rgba(0,0,0,.35)';ctx.fillRect(x+3,y+3,s.w,s.h);
         ctx.drawImage(s.face,x,y,s.w,s.h);
+        if(stars&&s.b.rating){
+          ctx.fillStyle='rgba(20,10,20,.72)';ctx.fillRect(x,y+s.h-18,s.w,18);
+          var rc=s.b.rating,sx=x+s.w/2-(rc-1)*7;
+          for(var q=0;q<rc;q++)star(ctx,sx+q*14,y+s.h-9,5);
+        }
       }else{
         ctx.fillStyle=s.c;ctx.fillRect(x,y,s.w,s.h);
         ctx.fillStyle='rgba(255,255,255,.18)';ctx.fillRect(x,y,3,s.h);
         ctx.fillStyle='rgba(0,0,0,.22)';ctx.fillRect(x+s.w-3,y,3,s.h);
         ctx.fillStyle=shade(s.c,-40);ctx.fillRect(x,y+10,s.w,2);ctx.fillRect(x,y+s.h-12,s.w,2);
-        ctx.save();ctx.translate(x+s.w/2,y+s.h/2);ctx.rotate(Math.PI/2);
+        var rt=stars?(s.b.rating||0):0,t0=rt?26+rt*10:0,len=rt?s.h-t0-26:s.h-30;
+        for(var k=0;k<rt;k++)star(ctx,x+s.w/2,y+22+k*10,4.4);
+        ctx.save();ctx.translate(x+s.w/2,y+(t0+s.h)/2);ctx.rotate(Math.PI/2);
         ctx.font='600 11px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
         var lum=parseInt(s.c.substr(1,2),16)*.3+parseInt(s.c.substr(3,2),16)*.6+parseInt(s.c.substr(5,2),16)*.1;
         ctx.fillStyle=lum>150?'#1d1d1d':'#fff';
-        ctx.fillText(fit(ctx,s.b.title,s.h-30),0,0);ctx.restore();
+        ctx.fillText(fit(ctx,s.b.title,len),0,0);ctx.restore();
       }
       x+=s.w+3;
     });
@@ -251,8 +264,9 @@ function lastName(a){var p=a.split(' ');return (p[p.length-1]||'').toLowerCase()
 function render(){
   var mode=$('style').value,m=$('mon').value;
   var mb=books.filter(function(b){return b.read===m});
-  draw($('cm'),mb,mb.length?new Date(m+'-15').toLocaleDateString(undefined,{month:'long',year:'numeric'})+': '+mb.length+(mb.length==1?' book':' books'):'',mode);
-  $('mcount').textContent=books.length?(mb.length?mb.length+' finished this month.':'No books with a Date Read in this month.'):'Load your CSV to see your shelf.';
+  draw($('cm'),mb,mb.length?new Date(m+'-15').toLocaleDateString(undefined,{month:'long',year:'numeric'})+': '+mb.length+(mb.length==1?' book':' books'):'',mode,-1,$('rate').checked);
+  var rated=mb.filter(function(b){return b.rating>0}),avg=rated.length?(rated.reduce(function(a,b){return a+b.rating},0)/rated.length).toFixed(1):'';
+  $('mcount').textContent=books.length?(mb.length?mb.length+' finished this month.'+(avg?' Average rating '+avg+'.':''):'No books with a Date Read in this month.'):'Load your CSV to see your shelf.';
   var sh=$('shelf').value.trim().toLowerCase(),sort=$('sort').value;
   var lb=books.filter(function(b){return b.shelves.indexOf(sh)>-1});
   var rd=function(x){return (x.shelves.indexOf('read')>-1||x.read)?1:0};
@@ -285,7 +299,7 @@ $('tabs').onclick=function(e){
   [].forEach.call($('tabs').children,function(b){b.classList.toggle('on',b.dataset.t==t)});
   $('month').classList.toggle('hide',t!='month');$('lib').classList.toggle('hide',t!='lib');
 };
-['mon','shelf','sort','style'].forEach(function(i){$(i).oninput=render});
+['mon','shelf','sort','style','rate'].forEach(function(i){$(i).oninput=render});
 $('saveM').onclick=function(){save($('cm'),'books-'+$('mon').value+'.png')};
 $('saveL').onclick=function(){save($('cl'),'my-library.png')};
 (function(){
