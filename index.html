@@ -225,7 +225,10 @@ $('saveM').onclick=function(){save($('cm'),'books-'+$('mon').value+'.png')};
 $('saveL').onclick=function(){save($('cl'),'my-library.png')};
 (function(){
   var d=new Date();$('mon').value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
-  try{var s=localStorage.getItem('gr-csv');if(s)load(s)}catch(e){}
+  fetch('goodreads_library_export.csv?v='+Date.now())
+    .then(function(r){if(!r.ok)throw 0;return r.text()})
+    .then(function(t){if(!load(t))throw 0})
+    .catch(function(){try{var s=localStorage.getItem('gr-csv');if(s)load(s)}catch(e){}render()});
   render();
 })();
 </script>
