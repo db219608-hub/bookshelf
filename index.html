@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>My Bookshelf</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&display=swap">
+<style>
+:root{--bg:#f3f5f4;--ink:#1d2b2a;--mute:#5d6e6c;--card:#fff;--line:#d3dcda;--accent:#1f6f6b;--on:#fff;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root{--bg:#101a19;--ink:#e6efed;--mute:#9bb0ad;--card:#182625;--line:#2b3f3d;--accent:#5fc2bb;--on:#08201e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:640px;margin:0 auto;padding:18px 16px 40px}
+h1{font:700 28px/1.1 Fraunces,Georgia,serif;margin:6px 0 4px}
+p.sub{color:var(--mute);margin:0 0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;margin-bottom:14px}
+.tabs button{flex:1}
+button,select,input[type=text],input[type=month]{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px}
+button.pri,.tabs button.on{background:var(--accent);color:var(--on);border-color:var(--accent);font-weight:600}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.row label{color:var(--mute);font-size:14px}
+canvas{width:100%;height:auto;border-radius:10px;display:block;background:#1b3a38}
+.note{color:var(--mute);font-size:14px;margin:8px 0 0}
+.hide{display:none}
+</style>
+</head>
+<body>
+<main>
+<h1>My Bookshelf</h1>
+<p class="sub">Load your Goodreads export to see what you read each month and to shelve the books you own.</p>
+
+<section class="card">
+  <div class="row"><button class="pri" id="pick">Choose Goodreads CSV</button><span class="note" id="status">No file loaded yet.</span></div>
+  <input type="file" id="file" accept=".csv,text/csv" class="hide">
+  <div class="row"><label for="style">Style</label>
+    <select id="style">
+      <option value="spines">Spines in cover colors</option>
+      <option value="mixed">Some covers facing out</option>
+      <option value="all">All covers facing out</option>
+    </select></div>
+  <p class="note" id="covnote"></p>
+</section>
+
+<div class="tabs" id="tabs">
+  <button class="on" data-t="month">Monthly shelf</button>
+  <button data-t="lib">Library</button>
+</div>
+
+<section id="month" class="card">
+  <div class="row"><label for="mon">Month</label><input type="month" id="mon"><button id="saveM" class="pri">Save picture</button></div>
+  <canvas id="cm" width="1440" height="600"></canvas>
+  <p class="note" id="mcount"></p>
+</section>
+
+<section id="lib" class="card hide">
+  <div class="row">
+    <label for="shelf">Shelf name</label><input type="text" id="shelf" value="owned" size="12" autocapitalize="none">
+    <label for="sort">Sort by</label>
+    <select id="sort"><option value="author">Author</option><option value="title">Title</option><option value="color">Color</option></select>
+    <button id="saveL" class="pri">Save picture</button>
+  </div>
+  <canvas id="cl" width="1440" height="600"></canvas>
+  <p class="note" id="lcount"></p>
+</section>
+</main>
+
+<script>
+var books=[],cache={},timer=null;
+var PAL=['#8c2f39','#c4663a','#d9a441','#6b8f4e','#2f6f73','#3b5b92','#6c4a8a','#b5547a','#4a4a52','#a3b5a0','#e0c9a6','#7a5230'];
+function $(i){return document.getElementById(i)}
+function hash(s){var h=0;for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return Math.abs(h)}
+
+function parseCSV(t){
+  var rows=[],row=[],f='',q=false;
+  for(var i=0;i<t.length;i++){
+    var c=t[i];
+    if(q){ if(c=='"'){ if(t[i+1]=='"'){f+='"';i++} else q=false } else f+=c }
+    else if(c=='"')q=true;
+    else if(c==','){row.push(f);f=''}
+    else if(c=='\n'){row.push(f);rows.push(row);row=[];f=''}
+    else if(c!='\r')f+=c;
+  }
+  if(f||row.length){row.push(f);rows.push(row)}
+  return rows;
+}
+function load(text){
+  var r=parseCSV(text.replace(/^\uFEFF/,'')),h=r.shift(),ix={};
+  h.forEach(function(n,i){ix[n.trim()]=i});
+  if(ix['Title']===undefined){$('status').textContent='That does not look like a Goodreads export. Check the file and try again.';return false}
+  books=r.filter(function(x){return x.length>1}).map(function(x){
+    var g=function(n){return ix[n]===undefined?'':(x[ix[n]]||'').trim()};
+    var isbn=g('ISBN13').replace(/[^0-9X]/g,'')||g('ISBN').replace(/[^0-9X]/g,'');
+    return {title:g('Title').replace(/\s*\(.*\)$/,''),author:g('Author'),pages:parseInt(g('Number of Pages'))||300,isbn:isbn,
+      read:g('Date Read').replace(/\//g,'-').slice(0,7),
+      shelves:(g('Bookshelves')+','+g('Exclusive Shelf')).toLowerCase().split(',').map(function(s){return s.trim()}),
+      owned:parseInt(g('Owned Copies'))>0};
+  });
+  try{localStorage.setItem('gr-csv',text)}catch(e){}
+  $('status').textContent=books.length+' books loaded.';
+  render();return true;
+}
+
+/* covers from Open Library */
+function cover(b){
+  if(!b.isbn)return null;
+  var k=b.isbn,c=cache[k];
+  if(c)return c.ok?c:null;
+  c=cache[k]={ok:false};
+  var img=new Image();img.crossOrigin='anonymous';
+  img.onload=function(){
+    if(img.naturalWidth<30){return}
+    c.img=img;c.ok=true;c.color=avg(img);schedule();
+  };
+  img.onerror=function(){};
+  img.src='https://covers.openlibrary.org/b/isbn/'+k+'-M.jpg?default=false';
+  return null;
+}
+function avg(img){
+  try{
+    var t=document.createElement('canvas');t.width=t.height=8;
+    var x=t.getContext('2d');x.drawImage(img,0,0,8,8);
+    var d=x.getImageData(0,0,8,8).data,r=0,g=0,b=0,n=64;
+    for(var i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];b+=d[i+2]}
+    return '#'+[r,g,b].map(function(v){return ('0'+Math.round(v/n).toString(16)).slice(-2)}).join('');
+  }catch(e){return null}
+}
+function schedule(){clearTimeout(timer);timer=setTimeout(render,400)}
+
+function spine(b,i,mode){
+  var hv=hash(b.title+b.author),p=Math.min(b.pages,900),cv=cover(b);
+  var face=cv&&(mode=='all'||(mode=='mixed'&&i%5==0));
+  if(face)return {w:74,h:111,face:cv.img,c:cv.color||'#444',b:b};
+  return {w:Math.round(18+p/900*22),h:Math.round(120+p/900*50+(hv%14)),c:(cv&&cv.color)||PAL[hv%PAL.length],b:b};
+}
+function hue(c){
+  var r=parseInt(c.substr(1,2),16)/255,g=parseInt(c.substr(3,2),16)/255,bl=parseInt(c.substr(5,2),16)/255;
+  var mx=Math.max(r,g,bl),mn=Math.min(r,g,bl),d=mx-mn;if(!d)return -1;
+  var h=mx==r?((g-bl)/d)%6:mx==g?(bl-r)/d+2:(r-g)/d+4;return (h*60+360)%360;
+}
+function shade(c,a){
+  var n=parseInt(c.slice(1),16),k=function(v){return Math.max(0,Math.min(255,v))};
+  return 'rgb('+k((n>>16)+a)+','+k(((n>>8)&255)+a)+','+k((n&255)+a)+')';
+}
+function fit(ctx,s,max){
+  if(ctx.measureText(s).width<=max)return s;
+  while(s.length>2&&ctx.measureText(s+'…').width>max)s=s.slice(0,-1);return s+'…';
+}
+function draw(cv,list,title,mode){
+  var W=720,pad=28,rowH=200,sp=list.map(function(b,i){return spine(b,i,mode)}),rows=[[]],x=pad;
+  sp.forEach(function(s){
+    if(x+s.w>W-pad&&rows[rows.length-1].length){rows.push([]);x=pad}
+    rows[rows.length-1].push(s);x+=s.w+3;
+  });
+  var top=title?56:20,H=top+rows.length*rowH+10;
+  cv.width=W*2;cv.height=H*2;
+  var ctx=cv.getContext('2d');ctx.scale(2,2);
+  ctx.fillStyle='#1b3a38';ctx.fillRect(0,0,W,H);
+  if(title){ctx.fillStyle='#f2e8d5';ctx.font='700 26px Fraunces,Georgia,serif';ctx.textAlign='left';ctx.fillText(title,pad,38)}
+  rows.forEach(function(row,ri){
+    var base=top+ri*rowH+rowH-22,x=pad;
+    ctx.fillStyle='#5a3b22';ctx.fillRect(10,base,W-20,12);
+    ctx.fillStyle='#7a5230';ctx.fillRect(10,base,W-20,4);
+    ctx.fillStyle='rgba(0,0,0,.25)';ctx.fillRect(10,base+12,W-20,5);
+    row.forEach(function(s){
+      var y=base-s.h;
+      if(s.face){
+        ctx.fillStyle='rgba(0,0,0,.35)';ctx.fillRect(x+3,y+3,s.w,s.h);
+        ctx.drawImage(s.face,x,y,s.w,s.h);
+      }else{
+        ctx.fillStyle=s.c;ctx.fillRect(x,y,s.w,s.h);
+        ctx.fillStyle='rgba(255,255,255,.18)';ctx.fillRect(x,y,3,s.h);
+        ctx.fillStyle='rgba(0,0,0,.22)';ctx.fillRect(x+s.w-3,y,3,s.h);
+        ctx.fillStyle=shade(s.c,-40);ctx.fillRect(x,y+10,s.w,2);ctx.fillRect(x,y+s.h-12,s.w,2);
+        ctx.save();ctx.translate(x+s.w/2,y+s.h/2);ctx.rotate(Math.PI/2);
+        ctx.font='600 11px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+        var lum=parseInt(s.c.substr(1,2),16)*.3+parseInt(s.c.substr(3,2),16)*.6+parseInt(s.c.substr(5,2),16)*.1;
+        ctx.fillStyle=lum>150?'#1d1d1d':'#fff';
+        ctx.fillText(fit(ctx,s.b.title,s.h-30),0,0);ctx.restore();
+      }
+      x+=s.w+3;
+    });
+  });
+}
+function lastName(a){var p=a.split(' ');return (p[p.length-1]||'').toLowerCase()}
+function render(){
+  var mode=$('style').value,m=$('mon').value;
+  var mb=books.filter(function(b){return b.read===m});
+  draw($('cm'),mb,mb.length?new Date(m+'-15').toLocaleDateString(undefined,{month:'long',year:'numeric'})+': '+mb.length+(mb.length==1?' book':' books'):'',mode);
+  $('mcount').textContent=books.length?(mb.length?mb.length+' finished this month.':'No books with a Date Read in this month.'):'Load your CSV to see your shelf.';
+  var sh=$('shelf').value.trim().toLowerCase(),sort=$('sort').value;
+  var lb=books.filter(function(b){return b.shelves.indexOf(sh)>-1||(sh=='owned'&&b.owned)});
+  lb.sort(function(a,b){
+    if(sort=='title')return a.title.localeCompare(b.title);
+    if(sort=='color'){var ca=cover(a),cb=cover(b);return hue((ca&&ca.color)||PAL[hash(a.title+a.author)%PAL.length])-hue((cb&&cb.color)||PAL[hash(b.title+b.author)%PAL.length])}
+    return lastName(a.author).localeCompare(lastName(b.author))||a.title.localeCompare(b.title);
+  });
+  draw($('cl'),lb,'',mode);
+  $('lcount').textContent=books.length?lb.length+' books on the "'+sh+'" shelf.'+(lb.length?'':' Check the shelf name matches your Goodreads shelf.'):'Load your CSV to see your library.';
+  var shown=mb.concat(lb),found=shown.filter(function(b){return cover(b)}).length;
+  $('covnote').textContent=shown.length?'Covers found for '+found+' of '+shown.length+' books shown. Books without a cover keep a plain spine.':'';
+}
+function save(cv,name){
+  try{
+    cv.toBlob(function(bl){
+      if(!bl)return;
+      var f=new File([bl],name,{type:'image/png'});
+      if(navigator.canShare&&navigator.canShare({files:[f]})){navigator.share({files:[f]}).catch(function(){})}
+      else{var a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download=name;a.click()}
+    });
+  }catch(e){alert('Saving was blocked because the cover images do not allow it. Switch Style to "Spines in cover colors", or take a screenshot instead.')}
+}
+$('pick').onclick=function(){$('file').click()};
+$('file').onchange=function(e){var f=e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(){load(r.result)};r.readAsText(f)};
+$('tabs').onclick=function(e){
+  var t=e.target.dataset.t;if(!t)return;
+  [].forEach.call($('tabs').children,function(b){b.classList.toggle('on',b.dataset.t==t)});
+  $('month').classList.toggle('hide',t!='month');$('lib').classList.toggle('hide',t!='lib');
+};
+['mon','shelf','sort','style'].forEach(function(i){$(i).oninput=render});
+$('saveM').onclick=function(){save($('cm'),'books-'+$('mon').value+'.png')};
+$('saveL').onclick=function(){save($('cl'),'my-library.png')};
+(function(){
+  var d=new Date();$('mon').value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  try{var s=localStorage.getItem('gr-csv');if(s)load(s)}catch(e){}
+  render();
+})();
+</script>
+</body>
+</html>
