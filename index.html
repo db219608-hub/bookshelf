@@ -152,7 +152,7 @@ function spine(b,i,mode,stars){
   var hv=hash(b.title+b.author),p=Math.min(b.pages,900),cv=cover(b);
   var face=cv&&(mode=='all'||(mode=='mixed'&&i%5==0));
   if(face)return {w:74,h:111,face:cv.img,c:cv.color||'#444',b:b};
-  return {w:Math.round(18+p/900*22),h:Math.round((stars?150:120)+p/900*(stars?45:50)+(hv%14)),c:(cv&&cv.color)||PAL[hv%PAL.length],b:b};
+  return {w:Math.round(26+p/900*20),h:Math.round((stars?150:120)+p/900*(stars?45:50)+(hv%14)),c:(cv&&cv.color)||PAL[hv%PAL.length],b:b};
 }
 function hue(c){
   var r=parseInt(c.substr(1,2),16)/255,g=parseInt(c.substr(3,2),16)/255,bl=parseInt(c.substr(5,2),16)/255;
@@ -166,6 +166,26 @@ function shade(c,a){
 function fit(ctx,s,max){
   if(ctx.measureText(s).width<=max)return s;
   while(s.length>2&&ctx.measureText(s+'…').width>max)s=s.slice(0,-1);return s+'…';
+}
+function spineText(ctx,title,len,wid){
+  var t=title.split(':')[0].trim()||title,sz,i;
+  for(sz=11;sz>=8;sz--){
+    ctx.font='600 '+sz+'px system-ui,sans-serif';
+    if(ctx.measureText(t).width<=len){ctx.fillText(t,0,0);return}
+  }
+  var w=t.split(' ');
+  for(sz=10;sz>=8&&wid>=2*sz+2;sz--){
+    ctx.font='600 '+sz+'px system-ui,sans-serif';
+    var best=null;
+    for(i=1;i<w.length;i++){
+      var a=w.slice(0,i).join(' '),b=w.slice(i).join(' ');
+      var m=Math.max(ctx.measureText(a).width,ctx.measureText(b).width);
+      if(m<=len&&(!best||m<best.m))best={a:a,b:b,m:m};
+    }
+    if(best){ctx.fillText(best.a,0,-sz*.65);ctx.fillText(best.b,0,sz*.65);return}
+  }
+  ctx.font='600 8px system-ui,sans-serif';
+  ctx.fillText(fit(ctx,t,len),0,0);
 }
 function star(ctx,cx,cy,r){
   ctx.beginPath();
@@ -216,7 +236,7 @@ function draw(cv,list,title,mode,brk,stars){
         ctx.font='600 11px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
         var lum=parseInt(s.c.substr(1,2),16)*.3+parseInt(s.c.substr(3,2),16)*.6+parseInt(s.c.substr(5,2),16)*.1;
         ctx.fillStyle=lum>150?'#1d1d1d':'#fff';
-        ctx.fillText(fit(ctx,s.b.title,len),0,0);ctx.restore();
+        spineText(ctx,s.b.title,len,s.w-8);ctx.restore();
       }
       x+=s.w+3;
     });
