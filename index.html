@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#241528">
 <title>My Bookshelf</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&display=swap">
 <style>
@@ -26,6 +27,17 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid 
 canvas{width:100%;height:auto;border-radius:10px;display:block;background:#1b3a38}
 .note{color:var(--mute);font-size:14px;margin:8px 0 0}
 .hide{display:none}
+/* cozy theme */
+:root{--bg:#241528;--ink:#f1e6d0;--mute:#c9b898;--card:#2b1d12;--line:#7a5230;--accent:#e0b96d;--on:#2a1a0e}
+body{font-family:Fraunces,Georgia,serif;min-height:100vh;background:
+radial-gradient(900px 520px at 12% -5%,rgba(255,190,100,.24),transparent 62%),
+repeating-linear-gradient(90deg,#2f1a30 0 38px,#281529 38px 40px)}
+h1{color:#f6dfaa;font-size:36px;text-shadow:0 2px 0 rgba(0,0,0,.4)}
+.card{background:linear-gradient(#34231a,#2a1b11);border:1px solid #8c5c36;border-radius:6px;margin-bottom:24px;
+box-shadow:0 0 0 6px #5a3820,0 0 0 7px #8c5c36,0 16px 30px rgba(0,0,0,.45)}
+button,select,input[type=text],input[type=month]{font-family:inherit;background:#3b2819;color:var(--ink);border-color:#7a5230}
+button.pri,.tabs button.on{background:linear-gradient(#e8c47a,#c79c4e);color:#2a1a0e;border-color:#e8c47a}
+canvas{border-radius:4px;box-shadow:0 0 0 2px #3a2415,0 6px 14px rgba(0,0,0,.4)}
 </style>
 </head>
 <body>
@@ -58,9 +70,9 @@ canvas{width:100%;height:auto;border-radius:10px;display:block;background:#1b3a3
 
 <section id="lib" class="card hide">
   <div class="row">
-    <label for="shelf">Shelf name</label><input type="text" id="shelf" value="owned" size="12" autocapitalize="none">
+    <label for="shelf">Shelf name</label><input type="text" id="shelf" value="own" size="12" autocapitalize="none">
     <label for="sort">Sort by</label>
-    <select id="sort"><option value="author">Author</option><option value="title">Title</option><option value="color">Color</option></select>
+    <select id="sort"><option value="status">Read status</option><option value="author">Author</option><option value="title">Title</option><option value="color">Color</option></select>
     <button id="saveL" class="pri">Save picture</button>
   </div>
   <canvas id="cl" width="1440" height="600"></canvas>
@@ -149,22 +161,20 @@ function fit(ctx,s,max){
   if(ctx.measureText(s).width<=max)return s;
   while(s.length>2&&ctx.measureText(s+'…').width>max)s=s.slice(0,-1);return s+'…';
 }
-function draw(cv,list,title,mode){
+function draw(cv,list,title,mode,brk){
   var W=720,pad=28,rowH=200,sp=list.map(function(b,i){return spine(b,i,mode)}),rows=[[]],x=pad;
-  sp.forEach(function(s){
-    if(x+s.w>W-pad&&rows[rows.length-1].length){rows.push([]);x=pad}
+  sp.forEach(function(s,i){
+    if((i===brk||x+s.w>W-pad)&&rows[rows.length-1].length){rows.push([]);x=pad}
     rows[rows.length-1].push(s);x+=s.w+3;
   });
   var top=title?56:20,H=top+rows.length*rowH+10;
   cv.width=W*2;cv.height=H*2;
   var ctx=cv.getContext('2d');ctx.scale(2,2);
-  ctx.fillStyle='#1b3a38';ctx.fillRect(0,0,W,H);
-  if(title){ctx.fillStyle='#f2e8d5';ctx.font='700 26px Fraunces,Georgia,serif';ctx.textAlign='left';ctx.fillText(title,pad,38)}
+  backdrop(ctx,W,H);
+  if(title){ctx.fillStyle='#ebcb8a';ctx.font='700 26px Fraunces,Georgia,serif';ctx.textAlign='left';ctx.fillText(title,pad,38)}
   rows.forEach(function(row,ri){
     var base=top+ri*rowH+rowH-22,x=pad;
-    ctx.fillStyle='#5a3b22';ctx.fillRect(10,base,W-20,12);
-    ctx.fillStyle='#7a5230';ctx.fillRect(10,base,W-20,4);
-    ctx.fillStyle='rgba(0,0,0,.25)';ctx.fillRect(10,base+12,W-20,5);
+    plank(ctx,base,W);
     row.forEach(function(s){
       var y=base-s.h;
       if(s.face){
@@ -183,7 +193,45 @@ function draw(cv,list,title,mode){
       }
       x+=s.w+3;
     });
+    decor(ctx,ri,x,base,W,pad);
   });
+  glow(ctx,W,H);
+}
+function backdrop(ctx,W,H){
+  var g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#3b2516');g.addColorStop(1,'#2a190e');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='rgba(0,0,0,.18)';
+  for(var x=38;x<W;x+=46)ctx.fillRect(x,0,2,H);
+  ctx.fillStyle='#6b4428';ctx.fillRect(0,0,14,H);ctx.fillRect(W-14,0,14,H);ctx.fillRect(0,0,W,10);
+  ctx.fillStyle='#8c5c36';ctx.fillRect(0,0,3,H);ctx.fillRect(W-14,0,3,H);ctx.fillRect(0,0,W,3);
+}
+function plank(ctx,base,W){
+  ctx.fillStyle='#5a3820';ctx.fillRect(14,base,W-28,12);
+  ctx.fillStyle='#8c5c36';ctx.fillRect(14,base,W-28,4);
+  ctx.fillStyle='rgba(0,0,0,.14)';
+  for(var i=0;i<9;i++)ctx.fillRect(14+((i*97+base*7)%(W-100)),base+5+(i%3)*3,40+(i%4)*14,1);
+  ctx.fillStyle='rgba(0,0,0,.3)';ctx.fillRect(14,base+12,W-28,6);
+}
+function decor(ctx,ri,x,base,W,pad){
+  if(W-pad-x<64)return;
+  var cx=W-pad-26;
+  if(ri%2==0){
+    ctx.fillStyle='#4f8a55';
+    [-.6,0,.6].forEach(function(a){ctx.beginPath();ctx.ellipse(cx+a*22,base-46,8,26,a,0,6.3);ctx.fill()});
+    ctx.fillStyle='#9a5a3a';ctx.fillRect(cx-14,base-22,28,22);
+    ctx.fillStyle='#b27048';ctx.fillRect(cx-16,base-26,32,6);
+  }else{
+    var g=ctx.createRadialGradient(cx,base-44,2,cx,base-44,70);
+    g.addColorStop(0,'rgba(255,190,90,.4)');g.addColorStop(1,'rgba(255,190,90,0)');
+    ctx.fillStyle=g;ctx.fillRect(cx-70,base-114,140,140);
+    ctx.fillStyle='#efe3c8';ctx.fillRect(cx-7,base-34,14,34);
+    ctx.fillStyle='#ffc45c';ctx.beginPath();ctx.ellipse(cx,base-44,4,8,0,0,6.3);ctx.fill();
+  }
+}
+function glow(ctx,W,H){
+  var g=ctx.createRadialGradient(W*.15,0,10,W*.15,0,W*.95);
+  g.addColorStop(0,'rgba(255,196,110,.22)');g.addColorStop(1,'rgba(255,196,110,0)');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
 }
 function lastName(a){var p=a.split(' ');return (p[p.length-1]||'').toLowerCase()}
 function render(){
@@ -192,13 +240,16 @@ function render(){
   draw($('cm'),mb,mb.length?new Date(m+'-15').toLocaleDateString(undefined,{month:'long',year:'numeric'})+': '+mb.length+(mb.length==1?' book':' books'):'',mode);
   $('mcount').textContent=books.length?(mb.length?mb.length+' finished this month.':'No books with a Date Read in this month.'):'Load your CSV to see your shelf.';
   var sh=$('shelf').value.trim().toLowerCase(),sort=$('sort').value;
-  var lb=books.filter(function(b){return b.shelves.indexOf(sh)>-1||(sh=='owned'&&b.owned)});
+  var lb=books.filter(function(b){return b.shelves.indexOf(sh)>-1});
+  var rd=function(x){return (x.shelves.indexOf('read')>-1||x.read)?1:0};
   lb.sort(function(a,b){
+    if(sort=='status'){var d=rd(b)-rd(a);if(d)return d}
     if(sort=='title')return a.title.localeCompare(b.title);
     if(sort=='color'){var ca=cover(a),cb=cover(b);return hue((ca&&ca.color)||PAL[hash(a.title+a.author)%PAL.length])-hue((cb&&cb.color)||PAL[hash(b.title+b.author)%PAL.length])}
     return lastName(a.author).localeCompare(lastName(b.author))||a.title.localeCompare(b.title);
   });
-  draw($('cl'),lb,'',mode);
+  var brk=sort=='status'?lb.filter(rd).length:-1;
+  draw($('cl'),lb,'',mode,brk);
   $('lcount').textContent=books.length?lb.length+' books on the "'+sh+'" shelf.'+(lb.length?'':' Check the shelf name matches your Goodreads shelf.'):'Load your CSV to see your library.';
   var shown=mb.concat(lb),found=shown.filter(function(b){return cover(b)}).length;
   $('covnote').textContent=shown.length?'Covers found for '+found+' of '+shown.length+' books shown. Books without a cover keep a plain spine.':'';
