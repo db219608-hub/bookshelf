@@ -44,16 +44,22 @@ button,select,input[type=text],input[type=month]{font-family:inherit;background:
 button.pri,.tabs button.on{background:linear-gradient(#e8c47a,#c79c4e);color:#2a1a0e;border-color:#e8c47a}
 input[type=checkbox]{width:20px;height:20px;accent-color:#e0b96d;vertical-align:middle;margin:0 4px 0 0}
 canvas{border-radius:4px;box-shadow:0 0 0 2px #1e1030,0 6px 14px rgba(0,0,0,.4)}
+#now h2{font:700 18px Fraunces,Georgia,serif;margin:0 0 12px;color:#f6dfaa}
+.nb{display:flex;gap:14px;align-items:center;margin:0 0 12px}
+.nb:last-child{margin-bottom:0}
+.nb img,.nb .tile{width:64px;height:96px;border-radius:4px;flex:none;object-fit:cover;box-shadow:3px 3px 0 rgba(20,0,40,.4)}
+.nb .tile{display:flex;align-items:center;justify-content:center;text-align:center;padding:6px;font:700 11px/1.2 Fraunces,Georgia,serif;color:#fff;overflow:hidden;text-shadow:0 1px 1px rgba(0,0,0,.35)}
+.nb b{display:block;font:700 18px/1.2 Fraunces,Georgia,serif}
+.nb span{display:block;color:var(--mute);font-size:14px;margin-top:2px}
 </style>
 </head>
 <body>
 <main>
 <h1>My Bookshelf</h1>
-<p class="sub">Load your Goodreads export to see what you read each month and to shelve the books you own.</p>
+<p class="sub">Your Goodreads library, shelved by month and by what you own.</p>
 
 <section class="card">
-  <div class="row"><button class="pri" id="pick">Choose Goodreads CSV</button><span class="note" id="status">No file loaded yet.</span></div>
-  <input type="file" id="file" accept=".csv,text/csv" class="hide">
+  <p class="note" id="status" style="margin:0 0 10px">Loading your library…</p>
   <div class="row"><label for="style">Style</label>
     <select id="style">
       <option value="spines">Spines in cover colors</option>
@@ -62,6 +68,8 @@ canvas{border-radius:4px;box-shadow:0 0 0 2px #1e1030,0 6px 14px rgba(0,0,0,.4)}
     </select></div>
   <p class="note" id="covnote"></p>
 </section>
+
+<section class="card hide" id="now"></section>
 
 <div class="tabs" id="tabs">
   <button class="on" data-t="month">Monthly shelf</button>
@@ -108,18 +116,39 @@ function parseCSV(t){
 function load(text){
   var r=parseCSV(text.replace(/^\uFEFF/,'')),h=r.shift(),ix={};
   h.forEach(function(n,i){ix[n.trim()]=i});
-  if(ix['Title']===undefined){$('status').textContent='That does not look like a Goodreads export. Check the file and try again.';return false}
+  if(ix['Title']===undefined){$('status').textContent='goodreads_library_export.csv does not look like a Goodreads export. Check the file in your repo.';return false}
   books=r.filter(function(x){return x.length>1}).map(function(x){
     var g=function(n){return ix[n]===undefined?'':(x[ix[n]]||'').trim()};
     var isbn=g('ISBN13').replace(/[^0-9X]/g,'')||g('ISBN').replace(/[^0-9X]/g,'');
     return {title:g('Title').replace(/\s*\(.*\)$/,''),author:g('Author'),pages:parseInt(g('Number of Pages'))||300,isbn:isbn,
       read:g('Date Read').replace(/\//g,'-').slice(0,7),
       shelves:(g('Bookshelves')+','+g('Exclusive Shelf')).toLowerCase().split(',').map(function(s){return s.trim()}),
-      owned:parseInt(g('Owned Copies'))>0,rating:parseInt(g('My Rating'))||0};
+      owned:parseInt(g('Owned Copies'))>0,rating:parseInt(g('My Rating'))||0,pg:parseInt(g('Number of Pages'))||0};
   });
-  try{localStorage.setItem('gr-csv',text)}catch(e){}
   $('status').textContent=books.length+' books loaded.';
-  render();return true;
+  showNow();render();return true;
+}
+function isReading(b){return b.shelves.indexOf('currently-reading')>-1}
+function showNow(){
+  var cr=books.filter(isReading),box=$('now');
+  box.innerHTML='';
+  if(!cr.length){box.classList.add('hide');return}
+  box.classList.remove('hide');
+  var h=document.createElement('h2');h.textContent='Currently reading';box.appendChild(h);
+  cr.forEach(function(b){
+    var row=document.createElement('div');row.className='nb';
+    var tile=function(){var t=document.createElement('div');t.className='tile';t.style.background=PAL[hash(b.title+b.author)%PAL.length];t.textContent=b.title.split(':')[0];return t};
+    if(b.isbn){
+      var im=new Image();im.alt='';
+      im.onerror=function(){im.replaceWith(tile())};
+      im.onload=function(){if(im.naturalWidth<30)im.replaceWith(tile())};
+      im.src='https://covers.openlibrary.org/b/isbn/'+b.isbn+'-M.jpg?default=false';
+      row.appendChild(im);
+    }else row.appendChild(tile());
+    var d=document.createElement('div'),t=document.createElement('b'),a=document.createElement('span');
+    t.textContent=b.title.split(':')[0];a.textContent=b.author+(b.pg?', '+b.pg+' pages':'');
+    d.appendChild(t);d.appendChild(a);row.appendChild(d);box.appendChild(row);
+  });
 }
 
 /* covers from Open Library */
@@ -303,7 +332,7 @@ function decor(ctx,ri,x,base){
     [[-7,-28,10],[7,-29,10],[0,-37,10],[0,-27,11]].forEach(function(c){ctx.beginPath();ctx.arc(cx+c[0],base+c[1],c[2],0,6.3);ctx.fill()});
   }
 }
-function draw(cv,list,title,mode,brk,stars){
+function draw(cv,list,title,mode,brk,stars,sub){
   var W=560,bx=44,bxMax=516,rowH=stars?226:200,tbrH=40,tbr=-1,
       sp=list.map(function(b,i){return spine(b,i,mode,stars)}),rows=[[]],x=bx;
   sp.forEach(function(s,i){
@@ -382,29 +411,35 @@ function draw(cv,list,title,mode,brk,stars){
     ctx.fillStyle='rgba(10,20,60,.35)';ctx.fillText(title,41.5,53.5);
     ctx.fillStyle='#fff1cf';ctx.fillText(title,40,52);
   }
+  if(sub){
+    ctx.font='600 14px Fraunces,Georgia,serif';ctx.textAlign='left';ctx.textBaseline='alphabetic';
+    var suf=sub.more?'  +'+sub.more+' more':'',txt=fit(ctx,'Now reading: '+sub.t,290-ctx.measureText(suf).width)+suf;
+    ctx.fillStyle='rgba(10,20,60,.35)';ctx.fillText(txt,41,73);
+    ctx.fillStyle='#e6f7f4';ctx.fillText(txt,40,72);
+  }
   // soft beam of lamplight
   var lg=ctx.createLinearGradient(352,84,150,H);lg.addColorStop(0,'rgba(255,240,170,.22)');lg.addColorStop(1,'rgba(255,240,170,0)');
   ctx.fillStyle=lg;ctx.beginPath();ctx.moveTo(346,84);ctx.lineTo(358,84);ctx.lineTo(250,H);ctx.lineTo(40,H);ctx.closePath();ctx.fill();
 }
 function lastName(a){var p=a.split(' ');return (p[p.length-1]||'').toLowerCase()}
 function render(){
-  var mode=$('style').value,m=$('mon').value;
+  var mode=$('style').value,m=$('mon').value,reading=books.filter(isReading);
   var mb=books.filter(function(b){return b.read===m});
-  draw($('cm'),mb,mb.length?new Date(m+'-15').toLocaleDateString(undefined,{month:'long',year:'numeric'})+': '+mb.length+(mb.length==1?' book':' books'):'',mode,-1,$('rate').checked);
+  draw($('cm'),mb,mb.length?new Date(m+'-15').toLocaleDateString(undefined,{month:'long',year:'numeric'})+': '+mb.length+(mb.length==1?' book':' books'):'',mode,-1,$('rate').checked,reading.length?{t:reading[0].title.split(':')[0],more:reading.length-1}:null);
   var rated=mb.filter(function(b){return b.rating>0}),avg=rated.length?(rated.reduce(function(a,b){return a+b.rating},0)/rated.length).toFixed(1):'';
-  $('mcount').textContent=books.length?(mb.length?mb.length+' finished this month.'+(avg?' Average rating '+avg+'.':''):'No books with a Date Read in this month.'):'Load your CSV to see your shelf.';
+  $('mcount').textContent=books.length?(mb.length?mb.length+' finished this month.'+(avg?' Average rating '+avg+'.':''):'No books with a Date Read in this month.'):'No books loaded yet.';
   var sh=$('shelf').value.trim().toLowerCase(),sort=$('sort').value;
   var lb=books.filter(function(b){return b.shelves.indexOf(sh)>-1});
   var rd=function(x){return (x.shelves.indexOf('read')>-1||x.read)?1:0};
   lb.sort(function(a,b){
-    if(sort=='status'){var d=rd(b)-rd(a);if(d)return d}
+    if(sort=='status'){var d=rd(b)-rd(a);if(d)return d;var e=(isReading(b)?1:0)-(isReading(a)?1:0);if(e)return e}
     if(sort=='title')return a.title.localeCompare(b.title);
     if(sort=='color'){var ca=cover(a),cb=cover(b);return hue((ca&&ca.color)||PAL[hash(a.title+a.author)%PAL.length])-hue((cb&&cb.color)||PAL[hash(b.title+b.author)%PAL.length])}
     return lastName(a.author).localeCompare(lastName(b.author))||a.title.localeCompare(b.title);
   });
   var brk=sort=='status'?lb.filter(rd).length:-1;
   draw($('cl'),lb,'My library: '+lb.length+(lb.length==1?' book':' books'),mode,brk);
-  $('lcount').textContent=books.length?lb.length+' books on the "'+sh+'" shelf.'+(lb.length?'':' Check the shelf name matches your Goodreads shelf.'):'Load your CSV to see your library.';
+  $('lcount').textContent=books.length?lb.length+' books on the "'+sh+'" shelf.'+(lb.length?'':' Check the shelf name matches your Goodreads shelf.'):'No books loaded yet.';
   var shown=mb.concat(lb),found=shown.filter(function(b){return cover(b)}).length;
   $('covnote').textContent=shown.length?'Covers found for '+found+' of '+shown.length+' books shown. Books without a cover keep a plain spine.':'';
 }
@@ -418,8 +453,6 @@ function save(cv,name){
     });
   }catch(e){alert('Saving was blocked because the cover images do not allow it. Switch Style to "Spines in cover colors", or take a screenshot instead.')}
 }
-$('pick').onclick=function(){$('file').click()};
-$('file').onchange=function(e){var f=e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(){load(r.result)};r.readAsText(f)};
 $('tabs').onclick=function(e){
   var t=e.target.dataset.t;if(!t)return;
   [].forEach.call($('tabs').children,function(b){b.classList.toggle('on',b.dataset.t==t)});
@@ -430,10 +463,11 @@ $('saveM').onclick=function(){save($('cm'),'books-'+$('mon').value+'.png')};
 $('saveL').onclick=function(){save($('cl'),'my-library.png')};
 (function(){
   var d=new Date();$('mon').value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  try{localStorage.removeItem('gr-csv')}catch(e){}
   fetch('goodreads_library_export.csv?v='+Date.now())
-    .then(function(r){if(!r.ok)throw 0;return r.text()})
+    .then(function(r){if(!r.ok)throw 1;return r.text()})
     .then(function(t){if(!load(t))throw 0})
-    .catch(function(){try{var s=localStorage.getItem('gr-csv');if(s)load(s)}catch(e){}render()});
+    .catch(function(e){if(e!==0)$('status').textContent="Couldn't load goodreads_library_export.csv. Check that it is in your repo next to index.html.";render()});
   render();
 })();
 if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){})})}
